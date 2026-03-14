@@ -75,7 +75,11 @@ pip install -r requirements.txt
 
 # 2. 配置密钥
 cp .env.example .env
-# 编辑 .env 文件，填入你的 DEEPSEEK_API_KEY 和 EMBEDDING_API_KEY
+# 编辑 .env 文件，分别填入你的大模型和向量模型 API Key。
+# 💡 为什么需要两个 Key？
+# 因为 DeepSeek 官方专门做生成模型，目前没有专门的 Embedding（向量）API。
+# 所以做 RAG 检索必须采用“拼图模式”：DeepSeek 负责思考/生成（大脑），第三方 Embedding 模型负责将知识转为向量供检索（眼睛）。
+# 本项目默认配置的大脑是 DeepSeek，眼睛是火山引擎/SiliconFlow 提供的 Doubao-Embedding 模型。
 
 # 3. 启动服务
 python main.py
