@@ -5,6 +5,18 @@
 
 ---
 
+## 🧰 Runtime 核心装备
+
+本项目内部实现了一个功能完善的 Agent Runtime 引擎，它为你“装备”了以下核心能力：
+
+- **NLU 意图识别 (Intent Recognition)**：支持 Embedding 相似度匹配与 LLM 深度理解双引擎，并附带强大的 Slot (实体) 提取能力。
+- **Guardrails 安全防护 (Security)**：提供输入指令注入防护与输出结果的安全校验，支持 Regex 正则与 LLM-as-Judge 双重判定。
+- **RAG 知识检索 (Retrieval-Augmented Generation)**：内置基于 Qdrant 的轻量级本地向量数据库，实现了商品数据与通用知识的 Hybrid 分数融合检索。
+- **Memory 记忆系统 (Four-Tier Memory)**：实现了包含 工作记忆 (Working)、情节记忆 (Episodic)、用户画像 (Profile) 和 长期总结 (Long-term) 的四层专业架构。
+- **Hybrid 路由调度引擎 (ReAct + Workflow)**：不仅支持高自由度的 Agent ReAct 探索模式，也支持稳定可控的 Workflow 代码状态机流水线模式。
+- **Trace 可视化系统 (Observability)**：全链路透明无死角，实时打印 LLM Token 消耗、执行耗时、Prompt 组装详情以及工具调用链。
+
+---
 ## 🎯 这个项目能帮你理解什么？
 
 | 你可能的疑问 | 这个项目怎么解答 |
