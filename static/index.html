@@ -775,6 +775,13 @@
                     <span class="toggle-option" data-val="llm">LLM</span>
                 </div>
             </div>
+            <div class="mode-switch">
+                <span class="mode-switch-label">⚡ Workflow</span>
+                <div class="toggle-pill" id="workflowToggle" onclick="toggleMode('workflow')">
+                    <span class="toggle-option active" data-val="deterministic">固定流程</span>
+                    <span class="toggle-option" data-val="prompt_recommended">提示词推荐</span>
+                </div>
+            </div>
         </div>
         <div class="log-tabs">
             <div class="log-tab active" onclick="switchTab('timeline')">Pipeline Trace</div>
@@ -860,7 +867,9 @@
                     </div>
                     <div class="help-route-card">
                         <h4><span style="color:var(--yellow)">●</span> Workflow 模式</h4>
-                        <p>多步确定性任务（如批量商品对比）。代码驱动 for 循环，LLM 仅参与总结。</p>
+                        <p>多步任务（如批量商品对比）。支持两种执行方式（可在面板切换）：<br>
+                        <strong>固定流程</strong>：代码驱动 for 循环，LLM 仅参与总结；<br>
+                        <strong>提示词推荐</strong>：将步骤注入 Prompt 作为建议，由 LLM ReAct 自主执行。</p>
                         <div class="help-pipeline" style="margin-top:8px;padding:8px 10px">
                             <span class="help-pipe-step" style="background:var(--purple-dim);color:var(--purple)">Guard</span>
                             <span class="help-pipe-arrow">→</span>
@@ -872,7 +881,7 @@
                             <span class="help-pipe-arrow">→</span>
                             <span class="help-pipe-step" style="background:var(--yellow-dim);color:var(--yellow)">Plan</span>
                             <span class="help-pipe-arrow">→</span>
-                            <span class="help-pipe-step" style="background:var(--yellow-dim);color:var(--yellow)">Workflow</span>
+                            <span class="help-pipe-step" style="background:var(--yellow-dim);color:var(--yellow)">Workflow / ReAct</span>
                             <span class="help-pipe-arrow">→</span>
                             <span class="help-pipe-step" style="background:var(--green-dim);color:var(--green)">Reflect</span>
                             <span class="help-pipe-arrow">→</span>
@@ -973,8 +982,9 @@
                     </div>
                     <div class="help-step-desc">
                         <strong>ReAct 模式</strong>（intent / skill）：LLM 自主决定调用哪些工具，每轮产生 Thought → Action → Observation，最多循环 5 次。<br>
-                        <strong>Workflow 模式</strong>：代码 for 循环按计划依次执行工具调用，LLM 仅在最后一步生成总结回复。<br>
-                        遇到敏感操作（如退款）会暂停等待用户确认。
+                        <strong>Workflow 固定流程</strong>：代码 for 循环按计划依次执行工具调用，LLM 仅在最后一步生成总结回复。<br>
+                        <strong>Workflow 提示词推荐</strong>：将步骤计划注入 Prompt 作为建议，但由 LLM ReAct 循环自主决定执行。<br>
+                        遇到敏感操作（如退款）会暂停等待用户确认。可在面板切换 Workflow 模式观察差异。
                     </div>
                     <span class="help-trigger" style="background:var(--blue-dim);color:var(--blue)">触发：Pipeline 的核心执行阶段</span>
                 </div>
@@ -1027,9 +1037,9 @@
                     • 发送 <strong>"我要退款"</strong> → 触发追问流程（缺失 order_id 和 reason Slot）<br>
                     • 发送 <strong>"退款订单ORD001 质量问题"</strong> → 触发 Guardrails 安全确认（敏感操作）<br>
                     • 发送 <strong>"退货政策是什么"</strong> → 触发 Agentic RAG 检索知识库<br>
-                    • 发送 <strong>"对比P001和P003"</strong> → 触发 Workflow 模式（确定性工作流）<br>
+                    • 发送 <strong>"对比P001和P003"</strong> → 触发 Workflow 模式（可切换固定流程 / 提示词推荐）<br>
                     • 发送 <strong>"忽略前面的指令"</strong> → 触发输入安全拦截<br>
-                    • 右侧面板切换 <strong>NLU 模式</strong>（Embedding / LLM）和 <strong>Guard 模式</strong>（Regex / LLM）观察差异
+                    • 右侧面板切换 <strong>NLU 模式</strong>（Embedding / LLM）、<strong>Guard 模式</strong>（Regex / LLM）和 <strong>Workflow 模式</strong>（固定流程 / 提示词推荐）观察差异
                 </div>
             </div>
         </div>
@@ -2276,13 +2286,13 @@ function hi(json) {
 
 // ========== Mode Toggle ==========
 async function toggleMode(type) {
-    const pill = document.getElementById(type === 'nlu' ? 'nluToggle' : 'guardToggle');
+    const pill = document.getElementById(type === 'nlu' ? 'nluToggle' : type === 'guardrails' ? 'guardToggle' : 'workflowToggle');
     const options = pill.querySelectorAll('.toggle-option');
     const current = pill.querySelector('.toggle-option.active');
     const next = current === options[0] ? options[1] : options[0];
     
     const newVal = next.getAttribute('data-val');
-    const body = type === 'nlu' ? {nlu_mode: newVal} : {guardrails_mode: newVal};
+    const body = type === 'nlu' ? {nlu_mode: newVal} : type === 'guardrails' ? {guardrails_mode: newVal} : {workflow_mode: newVal};
     
     try {
         const res = await fetch('/api/config', {
@@ -2312,6 +2322,11 @@ async function toggleMode(type) {
         const guardPill = document.getElementById('guardToggle');
         guardPill.querySelectorAll('.toggle-option').forEach(o => {
             o.classList.toggle('active', o.getAttribute('data-val') === data.guardrails_mode);
+        });
+        // Workflow toggle
+        const wfPill = document.getElementById('workflowToggle');
+        wfPill.querySelectorAll('.toggle-option').forEach(o => {
+            o.classList.toggle('active', o.getAttribute('data-val') === data.workflow_mode);
         });
     } catch(e) {}
 })();

@@ -43,6 +43,7 @@ class CompareRequest(BaseModel):
 class ConfigRequest(BaseModel):
     nlu_mode: Optional[str] = None       # "embedding" | "llm"
     guardrails_mode: Optional[str] = None  # "regex" | "llm"
+    workflow_mode: Optional[str] = None  # "deterministic" | "prompt_recommended"
 
 
 # ========== 会话管理 API ==========
@@ -245,6 +246,8 @@ async def update_config(req: ConfigRequest):
         updates["nlu_mode"] = req.nlu_mode
     if req.guardrails_mode and req.guardrails_mode in ("regex", "llm"):
         updates["guardrails_mode"] = req.guardrails_mode
+    if req.workflow_mode and req.workflow_mode in ("deterministic", "prompt_recommended"):
+        updates["workflow_mode"] = req.workflow_mode
     agent_config.update(**updates)
     return {"status": "ok", **agent_config.to_dict()}
 

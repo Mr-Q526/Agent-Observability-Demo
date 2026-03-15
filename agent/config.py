@@ -12,11 +12,14 @@ class AgentConfig:
         self.nlu_mode: str = "embedding"
         # Guardrails 安全检查模式: "regex" | "llm"
         self.guardrails_mode: str = "regex"
+        # Workflow 执行模式: "deterministic" (代码驱动固定流程) | "prompt_recommended" (提示词推荐, ReAct 执行)
+        self.workflow_mode: str = "deterministic"
 
     def to_dict(self) -> dict:
         return {
             "nlu_mode": self.nlu_mode,
             "guardrails_mode": self.guardrails_mode,
+            "workflow_mode": self.workflow_mode,
         }
 
     def update(self, **kwargs):

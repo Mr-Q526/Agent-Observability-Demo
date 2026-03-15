@@ -711,7 +711,7 @@ def run_agent(user_input: str, chat_history: list[dict] = None) -> dict:
     # =========================================
     run_start_time = time.time()
 
-    if route_type == "workflow" and plan:
+    if route_type == "workflow" and plan and agent_config.workflow_mode == "deterministic":
         # ====== 确定性工作流执行 ======
         final_content, last_tool_result, total_tool_calls, wf_tokens, all_tool_results = _execute_workflow(
             plan=plan,
