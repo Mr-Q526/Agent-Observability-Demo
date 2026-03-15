@@ -241,13 +241,13 @@ class SlotExtractor:
         # --- 通用实体抽取 ---
 
         # order_id: ORD001 格式
-        order_match = re.findall(r'(?i)(ORD\d{2,4})', query)
+        order_match = re.findall(r'(?i)(?<![A-Za-z])(ORD\d{2,4})(?!\d)', query)
         if order_match:
             slots["order_id"] = order_match[0].upper()
             details["patterns"].append({"slot": "order_id", "pattern": r"ORD\d{2,4}", "matched": order_match[0]})
 
-        # product_id: 取第一个
-        product_match = re.findall(r'(?i)\b(P\d{2,4})\b', query)
+        # product_id: 取第一个 (注意: Python3 中 CJK 字符是 \w，\b 在中文和拉丁字母间不生效)
+        product_match = re.findall(r'(?i)(?<![A-Za-z])(P\d{2,4})(?!\d)', query)
         if product_match:
             slots["product_id"] = product_match[0].upper()
             details["patterns"].append({"slot": "product_id", "pattern": r"P\d{2,4}", "matched": product_match[0]})

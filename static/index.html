@@ -728,6 +728,10 @@
                 <span class="ctx-label">🎯 当前意图</span>
                 <div class="ctx-value" id="ctxIntent">—</div>
             </div>
+            <div class="ctx-section">
+                <span class="ctx-label">📦 Slot 抽取</span>
+                <div class="ctx-value" id="ctxSlots">—</div>
+            </div>
         </div>
     </div>
 
@@ -1292,7 +1296,7 @@ async function refreshSession() {
         if(mn.content) {
             html += `<br><span style="color:var(--orange);font-size:10px">📝 v${mn.version}: ${esc(mn.content.slice(0,60))}${mn.content.length>60?'...':''}</span>`;
         }
-        el.innerHTML = html || '空';
+        if(el) el.innerHTML = html || '空';
         
         // Update new Sidebar Context Panel
         const ctxNote = document.getElementById('ctxNote');
@@ -1303,6 +1307,12 @@ async function refreshSession() {
             ctxTags.innerHTML = tags.length ? tags.map(t => `<span class="ctx-tag">${t}</span>`).join('') : '无显著标签';
         }
         if(ctxIntent) ctxIntent.textContent = wm.current_intent || '无交互任务';
+        const ctxSlots = document.getElementById('ctxSlots');
+        if(ctxSlots) {
+            const slots = wm.slots || {};
+            const entries = Object.entries(slots);
+            ctxSlots.innerHTML = entries.length ? entries.map(([k,v]) => `<span class="ctx-tag" style="background:var(--accent-dim);color:var(--accent)">${k}=${Array.isArray(v)?v.join(','):v}</span>`).join('') : '无 Slot';
+        }
         
     } catch(e) {}
 }
@@ -1789,6 +1799,11 @@ function renderPromptAssembly(sid, assembly) {
                 <span class="sf-slot-name" style="color:var(--green)">Memory Context (当前记忆上下文)</span>
                 <span class="sf-slot-value" style="font-size:11px;white-space:pre-wrap;color:var(--text-secondary)">${esc(assembly.memory_context)}</span>
             </div>` : ''}
+            ${assembly.history_messages_count > 0 ? `
+            <div class="sf-slot-row" style="flex-direction:column;align-items:flex-start;border-left:3px solid var(--cyan)">
+                <span class="sf-slot-name" style="color:var(--cyan)">💬 Conversation History (最近对话历史)</span>
+                <span class="sf-slot-value" style="font-size:11px;color:var(--text-secondary)">注入了最近 ${assembly.history_messages_count} 条消息 (${Math.floor(assembly.history_messages_count/2)} 轮对话)</span>
+            </div>` : ''}
             ${assembly.missing_slots_context ? `
             <div class="sf-slot-row" style="flex-direction:column;align-items:flex-start;border-left:3px solid var(--red)">
                 <span class="sf-slot-name" style="color:var(--red)">Missing Slots Handling (缺失槽位追问指示)</span>
@@ -2035,53 +2050,93 @@ function renderLLMContext(messages) {
     if(!messages || !messages.length) return '<div class="msg-viewer"><div style="color:var(--text-muted)">(无消息)</div></div>';
     const roleLabels = {system:'系统提示词',user:'用户输入',assistant:'AI 助手',tool:'工具返回'};
     const roleIcons = {system:'📜',user:'👤',assistant:'🤖',tool:'🔧'};
+
+    // 分组: system(第一条) / history(中间的 user+assistant) / current(最后一条 user)
+    const sysMsg = messages[0]?.role === 'system' ? messages[0] : null;
+    const restMsgs = sysMsg ? messages.slice(1) : messages;
+    const lastUserIdx = restMsgs.length - 1;
+    const currentUser = lastUserIdx >= 0 && restMsgs[lastUserIdx].role === 'user' ? restMsgs[lastUserIdx] : null;
+    const historyMsgs = currentUser ? restMsgs.slice(0, lastUserIdx) : restMsgs;
+
     let html = '<div class="msg-viewer">';
-    for(let i=0;i<messages.length;i++) {
-        const m = messages[i];
-        const role = m.role||'unknown';
-        const label = roleLabels[role]||role;
-        const icon = roleIcons[role]||'💬';
-        let content = m.content||'';
+
+    // ---- ① System Prompt ----
+    if(sysMsg) {
+        const content = sysMsg.content || '';
         const charCount = content.length;
-        const isLong = charCount > 200;
-        
         html += `<div class="msg-card">`;
         html += `<div class="msg-card-header">`;
-        html += `<span class="msg-role ${role}">${icon} ${label}</span>`;
-        html += `<span style="font-size:10px;color:var(--text-muted)">#${i+1}</span>`;
+        html += `<span class="msg-role system">📜 系统提示词</span>`;
         html += `<span class="msg-token-hint">${charCount} 字符</span>`;
         html += `</div>`;
 
-        // Identify injected sections
-        if(role==='system' && content.includes('【最近交互】')) {
-            const parts = content.split(/(【最近交互】|【用户标签】|【长期记忆】)/);
-            html += `<div class="msg-body">`;
-            for(const part of parts) {
-                if(part.startsWith('【')) {
-                    html += `<div class="msg-inject">🧬 记忆注入: ${esc(part)}</div>`;
-                } else {
-                    html += esc(part);
-                }
+        // 检测并高亮注入的各个模块
+        const sections = content.split(/(【[^】]+】)/);
+        html += `<div class="msg-body collapsed" onclick="this.classList.remove('collapsed')">`;
+        for(const part of sections) {
+            if(part.match(/^【.+】$/)) {
+                html += `<div class="msg-inject">🧩 ${esc(part)}</div>`;
+            } else {
+                html += esc(part);
             }
-            html += `</div>`;
-        } else if(m.tool_calls) {
-            // Assistant with tool_calls
-            html += `<div class="msg-body">`;
-            if(content) html += esc(content) + '\n';
-            html += `<div class="msg-inject">🔧 工具调用声明:</div>`;
-            for(const tc of m.tool_calls) {
-                html += `<span style="color:var(--blue);font-weight:600">${tc.function?.name||'?'}</span>`;
-                html += `(<span style="color:var(--yellow)">${esc(tc.function?.arguments||'{}')}</span>)\n`;
-            }
-            html += `</div>`;
-        } else {
-            // Normal content
-            const bodyClass = isLong ? 'msg-body collapsed' : 'msg-body';
-            const bodyId = `msgbody_${i}_${Date.now()}`;
-            html += `<div class="${bodyClass}" id="${bodyId}" onclick="this.classList.remove('collapsed')">${esc(content)}</div>`;
         }
+        html += `</div></div>`;
+    }
+
+    // ---- ② Conversation History (grouped) ----
+    if(historyMsgs.length > 0) {
+        const turnCount = Math.floor(historyMsgs.length / 2);
+        html += `<div style="margin:8px 0;border:1px solid rgba(34,211,238,0.2);border-radius:8px;overflow:hidden;background:rgba(34,211,238,0.03)">`;
+        html += `<div style="padding:6px 10px;background:rgba(34,211,238,0.08);display:flex;align-items:center;gap:6px;cursor:pointer" onclick="const b=this.nextElementSibling;b.style.display=b.style.display==='none'?'block':'none';this.querySelector('.hst-arrow').textContent=b.style.display==='none'?'▸':'▾'">`;
+        html += `<span style="font-size:12px">💬</span>`;
+        html += `<span style="font-size:11px;font-weight:600;color:var(--cyan)">最近对话记忆</span>`;
+        html += `<span style="font-size:10px;padding:1px 6px;border-radius:3px;background:var(--cyan-dim);color:var(--cyan);font-weight:600">${turnCount} 轮 · ${historyMsgs.length} 条</span>`;
+        html += `<span style="font-size:10px;color:var(--text-muted);margin-left:auto" class="hst-arrow">▾</span>`;
+        html += `</div>`;
+        html += `<div style="padding:4px 6px">`;
+
+        for(let i=0;i<historyMsgs.length;i++) {
+            const m = historyMsgs[i];
+            const role = m.role||'unknown';
+            const icon = roleIcons[role]||'💬';
+            const content = m.content||'';
+            let preview = content.length > 120 ? content.slice(0, 120) + '...' : content;
+
+            // tool_calls 的 assistant 消息特殊处理
+            if(m.tool_calls) {
+                const calls = m.tool_calls.map(tc => `${tc.function?.name||'?'}()`).join(', ');
+                preview = `🔧 调用工具: ${calls}`;
+            }
+
+            html += `<div style="display:flex;gap:6px;padding:4px 6px;border-bottom:1px solid rgba(255,255,255,0.03);align-items:flex-start">`;
+            html += `<span class="msg-role ${role}" style="flex-shrink:0;margin-top:1px">${icon}</span>`;
+            html += `<div style="flex:1;min-width:0">`;
+            html += `<div style="font-size:10px;line-height:1.5;color:var(--text-secondary);white-space:pre-wrap;word-break:break-all">${esc(preview)}</div>`;
+            html += `</div>`;
+            html += `<span style="font-size:9px;color:var(--text-muted);flex-shrink:0;font-family:'JetBrains Mono',monospace">${content.length}字</span>`;
+            html += `</div>`;
+        }
+
+        html += `</div></div>`;
+    }
+
+    // ---- ③ Current User Input (highlighted) ----
+    if(currentUser) {
+        const content = currentUser.content || '';
+        html += `<div class="msg-card" style="border-color:var(--accent);box-shadow:0 0 8px rgba(14,165,233,0.15)">`;
+        html += `<div class="msg-card-header" style="background:var(--accent-dim)">`;
+        html += `<span class="msg-role user">👤 当前用户输入</span>`;
+        html += `<span style="font-size:9px;padding:1px 6px;border-radius:3px;background:var(--accent);color:#fff;font-weight:600">CURRENT</span>`;
+        html += `<span class="msg-token-hint">${content.length} 字符</span>`;
+        html += `</div>`;
+        html += `<div class="msg-body" style="color:var(--accent);font-weight:500">${esc(content)}</div>`;
         html += `</div>`;
     }
+
+    // ---- 其他非标准消息 (tool_calls 等) ----
+    // 如果有非 system/history/currentUser 的消息 (e.g. tool role in ReAct)
+    // 已被上面的分组覆盖
+
     html += '</div>';
     return html;
 }
@@ -2397,14 +2452,19 @@ function renderWorkflowExecution(sid, wf) {
                 html += `<div class="json-view" style="margin-top:4px;padding:8px;max-height:100px;overflow:auto;font-size:10px;border-radius:4px">${hi(JSON.stringify(step.result,null,2))}</div>`;
             }
         } else {
-            // LLM 步骤: prompt + 结果 + tokens
-            if(step.llm_prompt) {
+            // LLM 步骤: 完整上下文 + prompt + 结果 + tokens
+            if(step.llm_messages) {
+                html += `<details style="margin-bottom:4px"><summary style="font-size:10px;color:var(--text-muted);cursor:pointer">📤 LLM 完整上下文 (${step.llm_messages.length} 条消息)</summary>
+                    <div style="margin-top:4px">${renderLLMContext(step.llm_messages)}</div>
+                </details>`;
+            } else if(step.llm_prompt) {
                 html += `<details style="margin-bottom:4px"><summary style="font-size:10px;color:var(--text-muted);cursor:pointer">📋 LLM 输入 Prompt</summary>
                     <div style="margin-top:4px;padding:8px;border-radius:4px;background:var(--bg-secondary);font-size:10px;color:var(--text-secondary);white-space:pre-wrap;max-height:150px;overflow:auto;font-family:'JetBrains Mono',monospace">${esc(step.llm_prompt)}</div>
                 </details>`;
             }
-            if(step.response_preview) {
-                html += `<div style="margin-top:4px;padding:8px;border-radius:6px;background:var(--bg-secondary);font-size:11px;color:var(--text-secondary);line-height:1.6;border-left:2px solid #a855f7">${esc(step.response_preview)}${step.response_preview.length >= 300 ? '…' : ''}</div>`;
+            if(step.llm_response || step.response_preview) {
+                const resp = step.llm_response || step.response_preview;
+                html += `<div style="margin-top:4px;padding:8px;border-radius:6px;background:var(--bg-secondary);font-size:11px;color:var(--text-secondary);line-height:1.6;border-left:2px solid #a855f7;max-height:200px;overflow:auto">${esc(resp)}</div>`;
             }
             if(step.usage) {
                 html += `<div style="display:flex;gap:12px;font-size:9px;color:var(--text-muted);margin-top:4px">

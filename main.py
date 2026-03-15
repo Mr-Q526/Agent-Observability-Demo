@@ -116,7 +116,7 @@ async def chat(req: ChatRequest):
     conv.add_message("user", req.message)
     conv.auto_title(req.message)
 
-    result = run_agent(req.message)
+    result = run_agent(req.message, chat_history=conv.messages)
 
     # 保存助手消息 & 关联 run
     conv.add_message("assistant", result.get("response", ""))

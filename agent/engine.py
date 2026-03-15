@@ -468,6 +468,8 @@ def _execute_workflow(plan: list[dict], slots: dict, skill, safe_input: str,
                     "duration_ms": round(duration_ms, 2),
                     "tokens": usage_tokens,
                     "llm_prompt": llm_prompt[:500],
+                    "llm_messages": messages,
+                    "llm_response": final_content,
                     "usage": {"prompt_tokens": resp.usage.prompt_tokens, "completion_tokens": resp.usage.completion_tokens, "total_tokens": usage_tokens} if resp.usage else {},
                 })
 
@@ -545,7 +547,7 @@ def _reflect(plan: list[dict], final_content: str, user_input: str,
 
 # ========== 主入口 ==========
 
-def run_agent(user_input: str) -> dict:
+def run_agent(user_input: str, chat_history: list[dict] = None) -> dict:
     """
     Agent 主入口 - 认知环路架构。
     根据 route_type 动态裁剪 pipeline:
@@ -660,10 +662,23 @@ def run_agent(user_input: str) -> dict:
 
     messages = [
         {"role": "system", "content": final_sys_prompt},
-        {"role": "user", "content": safe_input},
     ]
 
+    # 注入最近对话历史（最多保留最近 6 轮 = 12 条消息）
+    MAX_HISTORY_TURNS = 6
+    if chat_history:
+        # chat_history 包含当前这条 user 消息，所以取 [:-1] 是历史
+        history = chat_history[:-1] if len(chat_history) > 0 else []
+        # 取最近 N 轮（每轮 = 1 user + 1 assistant = 2 条）
+        recent = history[-(MAX_HISTORY_TURNS * 2):]
+        for msg in recent:
+            if msg.get("role") in ("user", "assistant") and msg.get("content"):
+                messages.append({"role": msg["role"], "content": msg["content"]})
+
+    messages.append({"role": "user", "content": safe_input})
+
     # 记录 Prompt Assembly Trace
+    history_count = len(messages) - 2  # 减去 system + current user
     run_log.add_step({
         "type": "prompt_assembly",
         "assembly": {
@@ -674,6 +689,7 @@ def run_agent(user_input: str) -> dict:
             "rag_context": rag_ctx_prompt,
             "plan_context": plan_ctx,
             "final_prompt": final_sys_prompt,
+            "history_messages_count": history_count,
         }
     })
 
